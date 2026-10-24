@@ -1,0 +1,18 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: foundry-llm
+spec:
+  type: conversation.openai
+  version: v1
+  metadata:
+  - name: apiType
+    value: "azure"
+  - name: key
+    value: "FOUNDRY_API_KEY"
+  - name: endpoint
+    value: "https://FOUNDRY_RESOURCE_NAME.openai.azure.com/"
+  - name: model
+    value: "gpt-5.5"
+  - name: apiVersion
+    value: "2024-06-01"

@@ -1,0 +1,1 @@
+dapr run --app-id WorkerDaprTestConversation --resources-path ../dapr/components --config ../dapr/config.yaml dotnet run

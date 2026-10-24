@@ -1,0 +1,153 @@
+@APISIX_ADMIN_KEY=edd1c9f034335f136f87ad84b625c8f1
+@CLIENT_API_KEY=abcdefghijk2026xyz
+@MODEL_NAME=gemini-3.1-flash-lite
+@ROUTE_APISIX_DAPR=/dapr/google-ai
+@VERTEX_PROJECT_ID=PROJECT_ID
+@VERTEX_CLIENT_EMAIL=CLIENT_EMAIL
+@VERTEX_PRIVATE_KEY_ID=PRIVATE_KEY_ID
+@VERTEX_PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\nPRIVATE KEY\n-----END PRIVATE KEY-----\n
+
+
+
+###
+###
+# set_ngx_var = true -> APISIX vai permitir setar no trace o conteúdo de variáveis do Nginx (base do APISIX)
+# PASSO 1: Configurar traces do APISIX para OpenTelemetry
+curl http://127.0.0.1:9180/apisix/admin/plugin_metadata/opentelemetry -H "X-API-KEY: {{APISIX_ADMIN_KEY}}" -X PUT -d '
+{
+    "trace_id_source": "x-request-id",
+    "resource": {
+      "service.name": "APISIX",
+      "deployment.environment.name": "development"
+    },
+    "collector": {
+      "address": "alloy:4318",
+      "request_timeout": 3,
+      "request_headers": {
+      }
+    },
+    "batch_span_processor": {
+      "drop_on_queue_full": false,
+      "max_queue_size": 1024,
+      "batch_timeout": 2,
+      "inactive_timeout": 1,
+      "max_export_batch_size": 16
+    },
+    "set_ngx_var": true
+}'
+
+
+###
+# PASSO 2: Criar o Consumer com a API Key do cliente.
+curl "http://127.0.0.1:9180/apisix/admin/consumers" -X PUT \
+  -H "X-API-KEY: {{APISIX_ADMIN_KEY}}" \
+  -d '{
+    "username": "consoleappchatai",
+    "plugins": {
+      "key-auth": {
+        "key": "{{CLIENT_API_KEY}}"
+      }
+    }
+  }'
+
+
+###
+# PASSO 3: Rota para o Dapr (conversation.openai). O Dapr sempre envia "Authorization: ******",
+# então esta rota não usa key-auth e remove o Authorization antes do ai-proxy.
+curl "http://127.0.0.1:9180/apisix/admin/routes" -X PUT \
+  -H "X-API-KEY: {{APISIX_ADMIN_KEY}}" \
+  -d '{
+    "id": "google-ai-vertex-dapr",
+    "uri": "{{ROUTE_APISIX_DAPR}}/chat/completions*",
+    "methods": ["POST"],
+    "plugins": {
+      "bearer-to-apikey": {},
+      "key-auth": {},
+      "consumer-restriction": {
+          "whitelist": [
+              "consoleappchatai"
+          ]
+      },
+      "ai-prompt-guard": {
+        "deny_patterns": ["(?i)AWS", "(?i)Amazon", "(?i)Oracle"]
+      },
+      "opentelemetry": {
+        "sampler": {
+          "name": "always_on"
+        },
+        "additional_attributes": [
+            "consumer_name",
+            "request_uri",
+            "hostname",
+            "location",
+            "upstream_scheme",
+            "upstream_host",
+            "upstream_uri",
+            "upstream_addr",
+            "server_addr",
+            "server_port",
+            "request_method",
+            "request_length",
+            "request_time",
+            "status",
+            "body_bytes_sent",
+            "request_body",
+            "resp_body"
+        ]
+      },
+      "loki-logger": {
+        "endpoint_addrs": ["http://loki:3100"],
+        "endpoint_uri": "/loki/api/v1/push",
+        "tenant_id": "fake",
+        "log_labels": {
+          "job": "apisix",
+          "route": "google-ai-vertex-dapr",
+          "consumer": "$consumer_name"
+        },
+        "include_req_body": true,
+        "include_resp_body": true,
+        "max_req_body_bytes": 524288,
+        "max_resp_body_bytes": 524288,
+        "batch_max_size": 1,
+        "inactive_timeout": 1
+      },
+      "ai-proxy": {
+        "provider": "vertex-ai",
+        "auth": {
+          "gcp": {
+            "service_account_json": "{\"type\":\"service_account\",\"project_id\":\"{{VERTEX_PROJECT_ID}}\",\"private_key_id\":\"{{VERTEX_PRIVATE_KEY_ID}}\",\"private_key\":\"{{VERTEX_PRIVATE_KEY}}\",\"client_email\":\"{{VERTEX_CLIENT_EMAIL}}\"}"
+          },
+          "header": {
+            "Accept-Encoding": "identity"
+          }
+        },
+        "options":{
+          "model": "google/{{MODEL_NAME}}"
+        },
+        "override": {
+          "endpoint": "https://aiplatform.googleapis.com/v1/projects/{{VERTEX_PROJECT_ID}}/locations/global/endpoints/openapi/chat/completions"
+        }
+      }
+    },
+    "upstream": {
+      "type": "roundrobin",
+      "nodes": {
+        "://googleapis.com": 1
+      },
+      "scheme": "https"
+    }
+  }'
+
+
+###
+# PASSO 4: Testes
+# Simula o Dapr: manda Authorization (ignorado pela rota)
+curl http://localhost:9080/dapr/google-ai/chat/completions \
+  -X POST \
+  -H "Authorization: Bearer {{CLIENT_API_KEY}}" \
+  -H "Content-Type: application/json" \
+  -d '{
+       "messages": [
+         {"role": "user", "content": "Explique o que é C# em poucas palavras..."}
+       ]
+  }'

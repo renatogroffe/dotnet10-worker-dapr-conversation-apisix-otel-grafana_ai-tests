@@ -1,0 +1,16 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: google-llm
+spec:
+  type: conversation.openai
+  version: v1
+  metadata:
+  - name: apiType
+    value: "open_ai"
+  - name: key
+    value: "abcdefghijk2026xyz"
+  - name: endpoint
+    value: "http://localhost:9080/dapr/google-ai"
+  - name: model
+    value: "gemini-3.1-flash-lite"

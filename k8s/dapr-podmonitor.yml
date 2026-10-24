@@ -1,0 +1,20 @@
+apiVersion: azmonitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: dapr-sidecars
+  namespace: kube-system   # o ama-metrics lê CRDs de qualquer namespace
+spec:
+  namespaceSelector:
+    any: true              # todos os namespaces
+  selector:
+    matchLabels:
+      dapr.io/sidecar-injected: "true"
+  podMetricsEndpoints:
+    - port: dapr-metrics
+      path: /
+      interval: 30s
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_annotation_dapr_io_app_id]
+          targetLabel: app_id
+        - sourceLabels: [__meta_kubernetes_namespace]
+          targetLabel: namespace
