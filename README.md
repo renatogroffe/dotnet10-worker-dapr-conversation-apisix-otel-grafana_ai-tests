@@ -1,0 +1,2 @@
+# dotnet10-worker-dapr-conversation-apisix-otel-grafana_ai-tests
+Exemplo de Console Application criado com o .NET 10 para testar IAs Generativas utilizando o building block de Conversation do projeto Dapr. Inclui exemplos em YAML com Microsoft Foundry, Grok e Google AI, APISIX, monitoramento com OTEL + stack Grafana, além de um arquivo do Docker Compose para o ambiente de testes e um Dockerfile da aplicação.
